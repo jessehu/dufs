@@ -203,9 +203,9 @@ impl Server {
 
         let path = path.as_path();
 
-        let (is_miss, is_dir, is_file, size) = match fs::metadata(path).await.ok() {
-            Some(meta) => (false, meta.is_dir(), meta.is_file(), meta.len()),
-            None => (true, false, false, 0),
+        let (is_miss, is_dir, is_file, readonly, size) = match fs::metadata(path).await.ok() {
+            Some(meta) => (false, meta.is_dir(), meta.is_file(), meta.permissions().readonly(), meta.len()),
+            None => (true, false, false, false, 0),
         };
 
         let allow_upload = self.args.allow_upload;
@@ -327,14 +327,14 @@ impl Server {
                 set_webdav_headers(&mut res);
             }
             Method::PUT => {
-                if !allow_upload || (!allow_delete && is_file && size > 0) {
+                if !allow_upload || ((!allow_delete || readonly) && is_file && size > 0) {
                     status_forbid(&mut res);
                 } else {
                     self.handle_upload(path, req, &mut res).await?;
                 }
             }
             Method::DELETE => {
-                if !allow_delete {
+                if !allow_delete || readonly {
                     status_forbid(&mut res);
                 } else if !is_miss {
                     self.handle_delete(path, is_dir, &mut res).await?
